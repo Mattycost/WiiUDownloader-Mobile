@@ -1,8 +1,9 @@
+
 name: Build Project
 
 permissions:
   contents: write
-  
+
 on:
   push:
     branches:
@@ -13,7 +14,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-intel
 
     steps:
     - name: Checkout code
@@ -54,27 +55,30 @@ jobs:
     - name: Upload Android APK
       uses: actions/upload-artifact@v4
       with:
-        name: "WiiUDownloader Android"
+        name: WiiUDownloader Android
         path: build/app/outputs/flutter-apk/app-release.apk
 
     - name: Upload iOS ipa
       uses: actions/upload-artifact@v4
       with:
-        name: "WiiUDownloader iOS"
+        name: WiiUDownloader iOS
         path: wiiudownloader.ipa
 
   create-release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [build]
     runs-on: ubuntu-latest
+
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
         path: ./release-assets
         merge-multiple: true
+
     - name: Display structure of downloaded files
       run: ls -R ./release-assets
+
     - name: Create GitHub Release
       uses: actions/create-release@v1
       id: create_release
