@@ -1,3 +1,4 @@
+
 import 'dart:io';
 import 'dart:isolate';
 import 'package:flutter/material.dart';
@@ -5,11 +6,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'ffi.dart';
 import 'download_manager.dart';
 import 'download_manager_ios.dart';
-import 'ios_bookmark.dart';
 
 BaseDownloadManager get downloadManager =>
     Platform.isIOS ? DownloadManagerIOS.instance : DownloadManager.instance;
@@ -104,10 +105,11 @@ class SearchTab extends StatefulWidget {
 class _SearchTabState extends State<SearchTab> {
   final TextEditingController _searchController = TextEditingController();
   List<TitleEntryData> _results = [];
-  int _selectedCategory = 4; // TITLE_CATEGORY_ALL
-  int _selectedRegion = 0; // 0 = all regions
+  int _selectedCategory = 4;
+  int _selectedRegion = 0;
   final Map<String, Future<int>> _titleSizeFutures = {};
-  static const _titleDatabaseUrl = 'https://wiiubrew.org/wiki/Title_database';
+  static const _titleDatabaseUrl =
+      'https://wiiubrew.org/wiki/Title_database';
 
   static const _categories = {
     4: 'All',
@@ -651,6 +653,7 @@ class _SettingsTabState extends State<SettingsTab> {
   static const _prefKey = 'download_directory';
   static const _decryptKey = 'decrypt_on_download';
   static const _keepScreenOnKey = 'keep_screen_on';
+
   String? _downloadDir;
   bool _decrypt = true;
   bool _keepScreenOn = false;
@@ -662,10 +665,34 @@ class _SettingsTabState extends State<SettingsTab> {
     _loadSettings();
   }
 
+  Future<String> _getIOSDownloadDirectory() async {
+    final documents = await getApplicationDocumentsDirectory();
+
+    final downloadFolder = Directory(
+      '${documents.path}/WiiUDownloader',
+    );
+
+    if (!await downloadFolder.exists()) {
+      await downloadFolder.create(recursive: true);
+    }
+
+    return downloadFolder.path;
+  }
+
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+
+    String? directory = prefs.getString(_prefKey);
+
+    if (Platform.isIOS) {
+      directory = await _getIOSDownloadDirectory();
+      await prefs.setString(_prefKey, directory);
+    }
+
+    if (!mounted) return;
+
     setState(() {
-      _downloadDir = prefs.getString(_prefKey);
+      _downloadDir = directory;
       _decrypt = prefs.getBool(_decryptKey) ?? true;
       _keepScreenOn = prefs.getBool(_keepScreenOnKey) ?? false;
       _loading = false;
@@ -677,14 +704,12 @@ class _SettingsTabState extends State<SettingsTab> {
       return true;
     }
 
-    // Android 10 and below use READ/WRITE storage runtime permission
     PermissionStatus status = await Permission.storage.status;
     if (status.isGranted) return true;
 
     status = await Permission.storage.request();
     if (status.isGranted) return true;
 
-    // Newer versions use the manageExternalStorage permission
     status = await Permission.manageExternalStorage.status;
     if (status.isGranted) return true;
 
@@ -692,6 +717,7 @@ class _SettingsTabState extends State<SettingsTab> {
     if (status.isGranted) return true;
 
     if (!mounted) return false;
+
     final shouldOpenSettings = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -712,9 +738,11 @@ class _SettingsTabState extends State<SettingsTab> {
         ],
       ),
     );
+
     if (shouldOpenSettings == true) {
       await openAppSettings();
     }
+
     return false;
   }
 
@@ -730,20 +758,30 @@ class _SettingsTabState extends State<SettingsTab> {
     final result = await FilePicker.getDirectoryPath(
       dialogTitle: 'Select Download Directory',
     );
+
     if (result == null) return;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, result);
+
     setState(() => _downloadDir = result);
   }
 
   Future<void> _pickDirectoryIOS() async {
-    final path = await IOSBookmark.pickAndBookmarkFolder();
-    if (path == null) return;
+    final path = await _getIOSDownloadDirectory();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, path);
+
+    if (!mounted) return;
+
     setState(() => _downloadDir = path);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Download folder configured!'),
+      ),
+    );
   }
 
   @override
