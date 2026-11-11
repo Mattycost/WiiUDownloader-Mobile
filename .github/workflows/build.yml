@@ -13,44 +13,45 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15-intel
+    runs-on: macos-15
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
       - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
+        uses: nttld/setup-ndk@v3
         id: setup-ndk
         with:
           ndk-version: r29
           add-to-path: false
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v5
         with:
           go-version-file: native_lib/go.mod
           cache: false
 
       - name: Setup Flutter SDK
-        uses: flutter-actions/setup-flutter@v4
+        uses: subosito/flutter-action@v2
         with:
           channel: stable
-          version: 3.41.3
+          flutter-version: 3.41.3
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
       - name: Build Android App
-        run: zsh build_android.sh
+        run: |
+          chmod +x build_android.sh
+          zsh build_android.sh
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Build iOS App
-        run: zsh build_ios.sh
+        run: |
+          chmod +x build_ios.sh
+          zsh build_ios.sh
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
@@ -70,6 +71,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
@@ -90,4 +93,3 @@ jobs:
             ./release-assets/wiiudownloader.ipa#WiiUDownloader.ipa \
             --title "Release ${GITHUB_REF_NAME}" \
             --notes "WiiUDownloader build"
-
