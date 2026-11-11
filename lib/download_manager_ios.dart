@@ -1,28 +1,30 @@
-import 'dart:io';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'ffi.dart';
 import 'download_manager_base.dart';
-import 'ios_bookmark.dart';
 
 export 'download_manager_base.dart';
 
 class DownloadManagerIOS extends BaseDownloadManager {
   static final DownloadManagerIOS instance = DownloadManagerIOS._();
+
   DownloadManagerIOS._();
 
   @override
   final List<DownloadEntry> entries = [];
+
   bool _isRunning = false;
   DateTime? _lastProgressUpdate;
 
   @override
   Future<void> init() async {
-    // No notification setup needed on iOS as we can't do background downloads
+    // No notification setup needed on iOS.
   }
 
   Future<void> _enableWakelockIfNeeded() async {
     final prefs = await SharedPreferences.getInstance();
+
     if (prefs.getBool('keep_screen_on') ?? false) {
       await WakelockPlus.enable();
     }
@@ -62,6 +64,7 @@ class DownloadManagerIOS extends BaseDownloadManager {
       decrypt: decrypt,
       version: version,
     );
+
     entries.add(entry);
     notifyListeners();
 
@@ -75,17 +78,11 @@ class DownloadManagerIOS extends BaseDownloadManager {
       (e) => e!.status == DownloadStatus.queued,
       orElse: () => null,
     );
+
     if (next == null) return;
 
     _isRunning = true;
-    _startEntryAsync(next);
-  }
-
-  Future<void> _startEntryAsync(DownloadEntry entry) async {
-    if (Platform.isIOS) {
-      await IOSBookmark.startAccessingBookmark();
-    }
-    _startEntry(entry);
+    _startEntry(next);
   }
 
   void _startEntry(DownloadEntry entry) {
@@ -104,45 +101,49 @@ class DownloadManagerIOS extends BaseDownloadManager {
       },
       onProgress: (downloaded, filename) {
         if (entry.status == DownloadStatus.cancelled) return;
+
         entry.downloaded = downloaded;
         entry.currentFile = filename;
         entry.status = DownloadStatus.downloading;
         entry.updateSpeed(downloaded);
 
         final now = DateTime.now();
+
         if (_lastProgressUpdate != null &&
             now.difference(_lastProgressUpdate!).inMilliseconds < 100) {
           return;
         }
-        _lastProgressUpdate = now;
 
+        _lastProgressUpdate = now;
         notifyListeners();
       },
       onDecryptionProgress: (progress) {
         if (entry.status == DownloadStatus.cancelled) return;
+
         entry.decryptionProgress = progress;
         entry.status = DownloadStatus.decrypting;
         notifyListeners();
       },
       onDone: (error) {
         if (entry.status == DownloadStatus.cancelled) {
-          // Already cancelled, don't overwrite status
+          // Already cancelled.
         } else if (error != null) {
           entry.status = DownloadStatus.error;
           entry.error = error;
         } else {
           entry.status = DownloadStatus.done;
         }
+
         entry.task = null;
         _isRunning = false;
         _lastProgressUpdate = null;
+
         notifyListeners();
 
         if (_hasActiveDownloads()) {
           _processQueue();
         } else {
           _disableWakelock();
-          IOSBookmark.stopAccessingBookmark();
         }
       },
     );
@@ -159,10 +160,11 @@ class DownloadManagerIOS extends BaseDownloadManager {
   void cancelDownload(DownloadEntry entry) {
     entry.task?.cancel();
     entry.status = DownloadStatus.cancelled;
+
     notifyListeners();
+
     if (!_hasActiveDownloads()) {
       _disableWakelock();
-      IOSBookmark.stopAccessingBookmark();
     }
   }
 
@@ -172,6 +174,7 @@ class DownloadManagerIOS extends BaseDownloadManager {
         entry.status == DownloadStatus.decrypting) {
       cancelDownload(entry);
     }
+
     entries.remove(entry);
     notifyListeners();
   }
