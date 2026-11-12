@@ -1,7 +1,8 @@
+
 name: Build Project
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
@@ -10,14 +11,16 @@ on:
     tags:
       - 'v*'
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-intel
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -27,7 +30,7 @@ jobs:
           add-to-path: false
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: native_lib/go.mod
           cache: false
@@ -37,31 +40,53 @@ jobs:
         with:
           channel: stable
           flutter-version: 3.41.3
+          cache: true
+          pub-cache: true
+
+      - name: Check toolchains
+        shell: bash
+        run: |
+          echo "Architecture:"
+          uname -m
+          echo "Go:"
+          go version
+          echo "Flutter:"
+          flutter --version
+          echo "NDK:"
+          echo "${ANDROID_NDK_HOME}"
+          test -d "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64"
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
       - name: Build Android App
-        run: |
-          chmod +x build_android.sh
-          zsh build_android.sh
+        shell: bash
+        run: bash build_android.sh
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Build iOS App
+        shell: bash
+        run: bash build_ios.sh
+
+      - name: Verify build outputs
         run: |
-          chmod +x build_ios.sh
-          zsh build_ios.sh
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          test -f wiiudownloader.ipa
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          ls -lh wiiudownloader.ipa
 
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: WiiUDownloader-Android
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
       - name: Upload iOS IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: WiiUDownloader-iOS
           path: wiiudownloader.ipa
@@ -76,7 +101,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: ./release-assets
           merge-multiple: true
